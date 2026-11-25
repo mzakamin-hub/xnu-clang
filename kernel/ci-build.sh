@@ -72,7 +72,12 @@ cp "$S/libdispatch/src/firehose/firehose_types.defs" "$L/include/kernel/os/fireh
 # and the macOS SDK's own IOKit/hid headers, both after the kernel's own, as on the project machine (build/ionet, build/iohid).
 I="$W/inc"; rm -rf "$I"; mkdir -p "$I/ionet/IOKit" "$I/iohid/IOKit"
 ln -s "$S/IONetworkingFamily" "$I/ionet/IOKit/network"
-kh="$msdk/System/Library/Frameworks/Kernel.framework/Versions/A/Headers"
+# The project machine's hid headers are MacOSX26.1.sdk's (build/iohid/SOURCE.txt). Newer SDKs' IOHIDKeys.h-family headers
+# include IOKit/hid/IOHIDPrivateKeys.h, which no SDK ships (run 45633752167), so take 26.1's from the runner's Xcode 26.1
+# (headers only: the compiler stays Xcode 26.6) and fall back to the selected SDK when that Xcode is absent.
+hsdk=$(ls -d /Applications/Xcode_26.1*.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.1.sdk 2>/dev/null | sed -n 1p)
+kh="${hsdk:-$msdk}/System/Library/Frameworks/Kernel.framework/Versions/A/Headers"
+log "   hid headers from ${hsdk:-$msdk}"
 for d in hid hidsystem graphics; do ln -s "$kh/IOKit/$d" "$I/iohid/IOKit/$d"; done
 ln -s "$kh/HIDDriverKit" "$I/iohid/HIDDriverKit"
 cp "$here/iohid/TargetConditionals.h" "$I/iohid/TargetConditionals.h"
