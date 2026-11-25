@@ -116,7 +116,7 @@ MAKEARGV=(make -C "$X" SDKROOT="$K" SDKROOT_RESOLVED="$K" SDKVERSION="$DT" PLATF
 # llvm-objcopy-22, the project machine's name; run 45639993071: "command not found"). Any llvm-objcopy does this section
 # removal: Xcode's if it ships one, else the runner image's Homebrew LLVM.
 oc=$(xcrun --find llvm-objcopy 2>/dev/null || true)
-[ -n "$oc" ] || oc=$(ls -d /opt/homebrew/opt/llvm*/bin/llvm-objcopy /usr/local/opt/llvm*/bin/llvm-objcopy 2>/dev/null | sort -V | sed -n '$p')
+[ -n "$oc" ] || oc=$( { ls -d /opt/homebrew/opt/llvm*/bin/llvm-objcopy /usr/local/opt/llvm*/bin/llvm-objcopy 2>/dev/null || true; } | sort -V | sed -n '$p')
 [ -n "$oc" ] || oc=$(command -v llvm-objcopy || true)
 [ -n "$oc" ] || { echo "::error::no llvm-objcopy on the runner (NATIVE_LATE_OBJCOPY)"; exit 1; }
 log "   NATIVE_LATE_OBJCOPY=$oc ($("$oc" --version 2>/dev/null | sed -n 2p))"
