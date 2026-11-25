@@ -1,0 +1,56 @@
+{
+  "comment": "Public inputs of the kernel compile, by exact commit. The OSS pins are the ones our clang-22 build's kernel SDK was made from (hakios-arm64e-iceland xnu-deps/setup.sh), so only the compiler changes.",
+  "xcode": "26.6",
+  "deployment_target": "16.5",
+  "sources": {
+    "xnu": {
+      "git": "https://github.com/apple-oss-distributions/xnu.git",
+      "tag": "xnu-12377.121.6",
+      "commit": "ac9718fb1af618d5ce8678d0dc6e8a58f252216f"
+    },
+    "AvailabilityVersions": {
+      "git": "https://github.com/apple-oss-distributions/AvailabilityVersions.git",
+      "tag": "AvailabilityVersions-115.4",
+      "commit": "5d9baee345b3bc72b26c71adc65f94f2d5e9ced2"
+    },
+    "libdispatch": {
+      "git": "https://github.com/apple-oss-distributions/libdispatch.git",
+      "tag": "libdispatch-1415.100.11",
+      "commit": "a641558f447659d90ad002ef0ee6f0212273fbfc"
+    },
+    "libpthread": {
+      "git": "https://github.com/apple-oss-distributions/libpthread.git",
+      "tag": "libpthread-514.100.2",
+      "commit": "a6c70ca0e544347a0377babf748f831577ec24f9"
+    },
+    "IONetworkingFamily": {
+      "git": "https://github.com/apple-oss-distributions/IONetworkingFamily.git",
+      "tag": "IONetworkingFamily-188",
+      "commit": "bb910e2b458939f6b1f53c0fa6907f258b431ea4"
+    }
+  },
+  "owner_build_values": {
+    "comment": "macos-qemu.config's per-object values. The two volume UUIDs are the public ones of UniXNU's macos-27.3-26C5035r profile (boot-uuid, systemos_volume_uuid); the Data volume UUID is ours and stays a placeholder here, filled in the object on the project machine.",
+    "XNU_VERIFIED_ROOT_PROBE": "1",
+    "XNU_SOURCE_STORAGE": "1",
+    "XNU_OWNER_ROOT_AUDIT": "1",
+    "XNU_OWNER_ROOT_TRUST": "1",
+    "XNU_SOURCE_MOCKFS": "0",
+    "XNU_SOURCE_INTREE_APFS": "0",
+    "XNU_NATIVE_RAM_BLOCK": "1",
+    "XNU_OWNER_DATA_MOUNT": "1",
+    "XNU_OWNER_CACHE_MOUNT": "1",
+    "XNU_OWNER_UNION_SYSTEMOS": "1",
+    "XNU_OWNER_CACHE_STARTUP": "1",
+    "XNU_OWNER_BOOT_MANIFEST": "1",
+    "XNU_OWNER_CACHE_VOLUME_UUID": "6678E466-2F88-4C56-9408-DC7361BAA0BA",
+    "XNU_OWNER_ROOT_VOLUME_UUID": "84581E99-85BE-4957-AC53-2947E887B3E4",
+    "XNU_OWNER_DATA_VOLUME_UUID": "1CE1DA7A-0000-4000-8000-0000000000D2"
+  },
+  "placeholders": {
+    "comment": "Unit identifiers replaced in the public series and the CI header; kernel objects carry these bytes and the project machine writes the real values in (same length, exactly one occurrence each) before it links.",
+    "data_volume_uuid": {"object": "bsd/DEVELOPMENT/kern_exec.o", "text": "1CE1DA7A-0000-4000-8000-0000000000D2"},
+    "ls_container_uuid": {"object": "bsd/DEVELOPMENT/kern_exec.o", "text": "1CE1C0DE-0000-4000-8000-0000000000C1"},
+    "userdata_gpt_guid": {"object": "bsd/DEVELOPMENT/hakios_iceland_ufs.o", "text": "ICEPH-UFS-GUID-1"}
+  }
+}

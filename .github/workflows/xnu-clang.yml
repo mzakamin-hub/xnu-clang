@@ -1,0 +1,92 @@
+name: xnu clang
+
+# D2, settled the sheng way (25 Nov): our xnu kernel is compiled with Xcode's clang on GitHub's macOS runner, as sheng's
+# kernel is (Xcode 26.6 on macos-26, the iPhoneOS SDK, BCM2837 DEVELOPMENT; UniXNU-sheng macos-lab.yml). Only the COMPILE
+# runs here, and only from public inputs: Apple's xnu-12377.121.6 and the Apple open source pieces in kernel/pins.json at
+# pinned commits, plus our own patch series kernel/series/<series>.patch (source only; the few unit identifiers it would
+# carry are placeholders, and kernel/rule-gate.py refuses the series before anything is applied if it holds a build tree,
+# a binary patch, key material, a firmware-sized byte array, an address, a personal path or an unknown UUID).
+#
+# The kernel is LINKED on the project machine, with what never comes here: the corecrypto archive, the source storage
+# archive (it carries the owner anchor), the firmware objects, the Wi-Fi driver object and the packs. So nothing on GitHub
+# holds firmware, keys, Apple binaries, trust caches or personal data. The artifact is our own objects, the link inputs the
+# build generated (filelist, alias list, symbol sets) and the two open-source kernel archives it built (firehose, pthread).
+# The link step here is EXPECTED to stop on the symbols of the private archives; kernel/collect.py checks that those are
+# the only reason and records them.
+#
+# Cost: workflow_dispatch only; one macos-26 job capped at 70 minutes. In a public repository standard runners are free;
+# in a private one they are billed (macOS $0.062/min): the account-wide ledger is kept off-repo with the project notes.
+
+on:
+  workflow_dispatch:
+    inputs:
+      series:
+        description: 'patch series: kernel/series/<series>.patch (lower-case letters, digits, dashes)'
+        required: true
+        default: 'k1'
+      xcode:
+        description: 'Xcode to select: /Applications/Xcode_<version>.app (empty = newest installed; the build requires 26.6)'
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+concurrency:
+  group: xnu-kernel
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  objects:
+    name: xnu objects (${{ inputs.series }})
+    runs-on: macos-26
+    timeout-minutes: 70
+    steps:
+      - name: Check out this repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Select Xcode
+        env:
+          XCODE_VERSION: ${{ inputs.xcode }}
+        run: bash scripts/select-xcode.sh
+
+      - name: Key of the kernel SDK cache (Xcode, iPhoneOS SDK, pins)
+        id: sdk-key
+        run: |
+          set -euo pipefail
+          key=$( { xcodebuild -version; xcrun --sdk iphoneos --show-sdk-version; cat kernel/pins.json; } | shasum -a 256 | cut -c1-16)
+          echo "key=xnu-ksdk-v1-$key" >> "$GITHUB_OUTPUT"
+
+      - name: Restore the kernel SDK additions (open-source headers and tools only)
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          key: ${{ steps.sdk-key.outputs.key }}
+          path: ${{ runner.temp }}/xnu-k/src
+
+      - name: Gate, fetch, apply and compile
+        env:
+          SERIES: ${{ inputs.series }}
+        run: bash kernel/ci-build.sh "$SERIES" "$GITHUB_WORKSPACE/artifacts"
+
+      - name: Save the kernel SDK additions
+        if: ${{ !cancelled() }}
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        continue-on-error: true
+        with:
+          key: ${{ steps.sdk-key.outputs.key }}
+          path: ${{ runner.temp }}/xnu-k/src
+
+      - name: Upload the kernel objects
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+        with:
+          name: xnu-objects-${{ inputs.series }}
+          path: artifacts
+          retention-days: 1
+          if-no-files-found: error
