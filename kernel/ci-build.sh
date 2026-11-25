@@ -112,6 +112,15 @@ MAKEARGV=(make -C "$X" SDKROOT="$K" SDKROOT_RESOLVED="$K" SDKVERSION="$DT" PLATF
   "kern_exec.o_CFLAGS_ADD=-DXNU_OWNER_CACHE_MOUNT=$(val XNU_OWNER_CACHE_MOUNT) -DXNU_OWNER_UNION_SYSTEMOS=$(val XNU_OWNER_UNION_SYSTEMOS) -DXNU_OWNER_CACHE_STARTUP=$(val XNU_OWNER_CACHE_STARTUP) -DXNU_OWNER_BOOT_MANIFEST=$(val XNU_OWNER_BOOT_MANIFEST) -DXNU_NATIVE_RAM_BLOCK=$(val XNU_NATIVE_RAM_BLOCK) -DXNU_OWNER_DATA_MOUNT=$(val XNU_OWNER_DATA_MOUNT) -include $OH"
   "IOKitBSDInit.cpo_CFLAGS_ADD=-DXNU_OWNER_BOOT_MANIFEST=$(val XNU_OWNER_BOOT_MANIFEST)"
   NATIVE_IONET_INCLUDE="$I/ionet" NATIVE_IOHID_INCLUDE="$I/iohid")
+# iokit/conf/Makefile.template strips __DATA,__mod_init_func from the late objects with NATIVE_LATE_OBJCOPY (default
+# llvm-objcopy-22, the project machine's name; run 45639993071: "command not found"). Any llvm-objcopy does this section
+# removal: Xcode's if it ships one, else the runner image's Homebrew LLVM.
+oc=$(xcrun --find llvm-objcopy 2>/dev/null || true)
+[ -n "$oc" ] || oc=$(ls -d /opt/homebrew/opt/llvm*/bin/llvm-objcopy /usr/local/opt/llvm*/bin/llvm-objcopy 2>/dev/null | sort -V | sed -n '$p')
+[ -n "$oc" ] || oc=$(command -v llvm-objcopy || true)
+[ -n "$oc" ] || { echo "::error::no llvm-objcopy on the runner (NATIVE_LATE_OBJCOPY)"; exit 1; }
+log "   NATIVE_LATE_OBJCOPY=$oc ($("$oc" --version 2>/dev/null | sed -n 2p))"
+MAKEARGV+=(NATIVE_LATE_OBJCOPY="$oc")
 
 log "4a. exported kernel headers"
 "${MAKEARGV[@]}" exporthdrs > "$W/exporthdrs.log" 2>&1 || { tail -40 "$W/exporthdrs.log"; echo "::error::exporthdrs failed"; exit 1; }
