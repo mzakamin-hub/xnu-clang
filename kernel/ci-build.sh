@@ -154,6 +154,14 @@ status=$?
 set -e
 log "   make exit $status after $(( $(date +%s) - start )) s; $(grep -c ' error: ' "$W/build.log" || true) compiler error lines"
 grep -n ' error: ' "$W/build.log" | grep -v 'linker command failed' | head -40 || true
+if [ "$status" != 0 ]; then
+  # run 45637097196: make exit 2 with no ' error: ' line. Show what else stopped it (make, tools, missing files).
+  log "   make's own stops and other failures:"
+  grep -n -a -E '\*\*\* |[Ee]rror [0-9]|fatal|command not found|No such file|not found|Undefined symbols|ld: |Killed|Abort' "$W/build.log" \
+    | grep -v -E ' warning: ' | head -60 || true
+  log "   last 40 lines of the build log:"
+  tail -n 40 "$W/build.log" || true
+fi
 
 log "5. check and pack"
 python3 -I "$here/collect.py" --xnu "$X" --record "$ICE_LINK_RECORD" --log "$W/build.log" --sdk-lib "$L/lib/kernel" \
