@@ -20,7 +20,9 @@ here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 patch="$here/series/$series.patch"
 [ -f "$patch" ] || { echo "::error::no kernel/series/$series.patch"; exit 1; }
 : "${DEVELOPER_DIR:?select-xcode.sh must run first}"
-xcodebuild -version | head -1 | grep -q '^Xcode 26\.6' || { echo "::error::the build is pinned to Xcode 26.6 (sheng's): $(xcodebuild -version | head -1)"; exit 1; }
+# read the whole output first: `xcodebuild -version | head -1` aborts xcodebuild (SIGPIPE -> NSException) under pipefail
+xv="$(xcodebuild -version)"; xv="${xv%%$'\n'*}"
+case "$xv" in "Xcode 26.6"|"Xcode 26.6."*) ;; *) echo "::error::the build is pinned to Xcode 26.6 (sheng's): $xv"; exit 1 ;; esac
 W="${RUNNER_TEMP:-/tmp}/xnu-k"
 S="$W/src"                      # fetched sources (cached between runs: open source only)
 X="$W/xnu"                      # the patched tree (never cached)
@@ -131,7 +133,7 @@ xcrun --sdk iphoneos libtool -static -o "$L/lib/kernel/libpthread_kext.a" "$B"/p
 # -lcc_kext (MakeInc.def LD_KERNEL_LIBS) is in Apple's internal SDK only. This link is a record, not the product: Xcode's
 # kext compiler runtime stands in when the toolchain has one, otherwise an empty archive, and any builtin left undefined
 # is resolved by the project machine's -lcc_kext at the real link. Neither archive is uploaded (collect.py).
-rt=$(find "$(xcrun --sdk iphoneos clang -print-resource-dir)/lib" -name 'libclang_rt.cc_kext*.a' 2>/dev/null | sort | head -1)
+rt=$(find "$(xcrun --sdk iphoneos clang -print-resource-dir)/lib" -name 'libclang_rt.cc_kext*.a' 2>/dev/null | sort | sed -n 1p)
 if [ -n "$rt" ]; then ln -sf "$rt" "$L/lib/kernel/libcc_kext.a"; echo "   -lcc_kext: $rt"
 else printf '' | "${KCC[@]}" -x c -o "$B/empty.o" - && xcrun --sdk iphoneos libtool -static -o "$L/lib/kernel/libcc_kext.a" "$B/empty.o"; echo "   -lcc_kext: empty stand-in"; fi
 
