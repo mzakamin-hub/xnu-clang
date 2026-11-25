@@ -81,10 +81,23 @@ printf '#define XNU_OWNER_DATA_VOLUME_UUID "%s"\n#define XNU_OWNER_CACHE_VOLUME_
     "$(val XNU_OWNER_DATA_VOLUME_UUID)" "$(val XNU_OWNER_CACHE_VOLUME_UUID)" "$(val XNU_OWNER_ROOT_VOLUME_UUID)" > "$OH"
 
 DT=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["deployment_target"])' "$here/pins.json")
-MAKEARGV=(make -C "$X" SDKROOT="$K" PLATFORM=iPhoneOS PLATFORMPATH="$(xcrun --sdk iphoneos --show-sdk-platform-path)"
+# The assembled SDK is not one xcodebuild knows, so `xcrun -sdk <it> -show-sdk-version` fails (run 45627389140:
+# "xcodebuild: error: SDK ... cannot be located"). makedefs/MakeInc.cmd asks only when SDKROOT_RESOLVED / SDKVERSION /
+# PLATFORM are unset, so all three are given: the path itself, and the version our clang-22 build's xcrun answers for its
+# iPhoneOS16.5.xnu.sdk (xnu-deps host/bin/xcrun: XNU_SDK_VERSION, 16.5 = the deployment target). SDKVERSION is used
+# otherwise only by the default DEPLOYMENT_TARGET_FLAGS (replaced below) and the DriverKit/Exclave cohort names (unused).
+#
+# XNU_NO_TYPE_BUILTINS: our tree tests it (libkern/c++/OSData.h:970, osfmk/kern/kalloc.h:923; xnu-macos 629045ce) and
+# the clang-22 build gets it from the force-included xnu-deps hostinc/xnu_clang_compat.h: 1 where the compiler lacks
+# __builtin_xnu_type_signature (upstream clang: stubs, every type "mixed"), 0 where it has it ("Apple's clang ... has the
+# builtins; OSData.h still tests the macro"). Xcode's clang has them, so 0: the compat header's own Apple-clang value,
+# and Apple's unmodified static_assert / kalloc_type path, as sheng's Xcode 26.6 kernel compiles it. In
+# DEPLOYMENT_TARGET_FLAGS because that reaches C, assembly and C++ alike (MakeInc.rule:521, 543).
+MAKEARGV=(make -C "$X" SDKROOT="$K" SDKROOT_RESOLVED="$K" SDKVERSION="$DT" PLATFORM=iPhoneOS
+  PLATFORMPATH="$(xcrun --sdk iphoneos --show-sdk-platform-path)"
   ARCH_CONFIGS=ARM64 MACHINE_CONFIGS=BCM2837 KERNEL_CONFIGS=DEVELOPMENT ARCH_STRING_FOR_CURRENT_MACHINE_CONFIG=arm64e
   RC_DARWIN_KERNEL_VERSION=12377.121.6 BUILD_WERROR=0 BUILD_LTO=0 DO_CTFMERGE=0 BUILD_DSYM=0 LOGCOLORS=n MAKEJOBS=-j"$JOBS"
-  "DEPLOYMENT_TARGET_FLAGS=-miphoneos-version-min=$DT -DXNU_TARGET_OS_OSX -DPEXPERT_NO_3X_IMAGES=1 -DXNU_PTRAUTH_SIGNED_DATA_PTRS=1"
+  "DEPLOYMENT_TARGET_FLAGS=-miphoneos-version-min=$DT -DXNU_TARGET_OS_OSX -DPEXPERT_NO_3X_IMAGES=1 -DXNU_PTRAUTH_SIGNED_DATA_PTRS=1 -DXNU_NO_TYPE_BUILTINS=0"
   "CFLAGS_EXTRA=-DXNU_SOURCE_CORECRYPTO14=1" "prng_random.o_CFLAGS_ADD="
   "ubc_subr.o_CFLAGS_ADD=-DXNU_NATIVE_CS_HASH_CACHE=1"
   "bsd_init.o_CFLAGS_ADD=-DXNU_VERIFIED_ROOT_PROBE=$(val XNU_VERIFIED_ROOT_PROBE) -DXNU_SOURCE_STORAGE=$(val XNU_SOURCE_STORAGE) -DXNU_OWNER_ROOT_AUDIT=$(val XNU_OWNER_ROOT_AUDIT) -DXNU_OWNER_ROOT_TRUST=$(val XNU_OWNER_ROOT_TRUST)"
@@ -100,7 +113,7 @@ E="$X/BUILD/obj/EXPORT_HDRS"
 log "4b. libfirehose_kernel.a and libpthread_kext.a from open source, Xcode's clang"
 KCC=(xcrun --sdk iphoneos clang -target arm64e-apple-ios"$DT" -c -Os -mkernel -nostdinc -fno-builtin
      -isystem "$(xcrun --sdk iphoneos clang -print-resource-dir)/include" -D__DARWIN_64_BIT_INO_T=1 -DARM64_BOARD_CONFIG_BCM2837
-     -DKERNEL=1 -DKERNEL_PRIVATE=1 -DPRIVATE=1
+     -DKERNEL=1 -DKERNEL_PRIVATE=1 -DPRIVATE=1 -DXNU_NO_TYPE_BUILTINS=0
      -I"$E/osfmk" -I"$E/bsd" -I"$E/libkern" -I"$E/pexpert" -I"$E/iokit" -I"$E/security" -I"$X/EXTERNAL_HEADERS")
 B="$W/libs"; rm -rf "$B"; mkdir -p "$B/inc"
 "${KCC[@]}" -DXNU_KERNEL_PRIVATE=1 -DDISPATCH_USE_DTRACE=0 -DOS_ATOMIC_CONFIG_MEMORY_ORDER_DEPENDENCY=1 \
@@ -127,7 +140,8 @@ export ICE_LINK_RECORD="$W/link-record.json"
 rm -f "$ICE_LINK_RECORD"
 start=$(date +%s)
 set +e
-"${MAKEARGV[@]}" LD="$here/record-link.sh" LD_KERNEL_ARCHIVES='$(LDFLAGS_KERNEL_SDK) -lfirehose_kernel -lpthread_kext' \
+# -k as our clang-22 build runs it (perf1 xnu-build-w.sh -j10 -k): one run reports every compile error, not the first.
+"${MAKEARGV[@]}" -k LD="$here/record-link.sh" LD_KERNEL_ARCHIVES='$(LDFLAGS_KERNEL_SDK) -lfirehose_kernel -lpthread_kext' \
     build > "$W/build.log" 2>&1
 status=$?
 set -e
