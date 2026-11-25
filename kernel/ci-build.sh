@@ -127,9 +127,14 @@ log "4a. exported kernel headers"
 E="$X/BUILD/obj/EXPORT_HDRS"
 
 log "4b. libfirehose_kernel.a and libpthread_kext.a from open source, Xcode's clang"
+# -DXNU_PTRAUTH_SIGNED_DATA_PTRS=1, as the kernel's DEPLOYMENT_TARGET_FLAGS above and the project machine's
+# base/tools/build-pthread-macos.sh:73 ("the archive's statics include sysctl oids"): with it libkern/os/base.h keeps the
+# OS_PTRAUTH_SIGNED_PTR qualifiers, so sysctl_oid.oid_parent in the archives is signed like the kernel's. Without it (run
+# 45650393177) pthread_kern_support.o stored a plain oid_parent and the kernel panicked at pthread_init's sysctl_register_oid:
+# "PAC failure from kernel with DA key ... sysctl_register_oid_locked" (k1-kern QEMU bars, 25 Nov). Checked after the build.
 KCC=(xcrun --sdk iphoneos clang -target arm64e-apple-ios"$DT" -c -Os -mkernel -nostdinc -fno-builtin
      -isystem "$(xcrun --sdk iphoneos clang -print-resource-dir)/include" -D__DARWIN_64_BIT_INO_T=1 -DARM64_BOARD_CONFIG_BCM2837
-     -DKERNEL=1 -DKERNEL_PRIVATE=1 -DPRIVATE=1 -DXNU_NO_TYPE_BUILTINS=0
+     -DKERNEL=1 -DKERNEL_PRIVATE=1 -DPRIVATE=1 -DXNU_NO_TYPE_BUILTINS=0 -DXNU_PTRAUTH_SIGNED_DATA_PTRS=1 -fno-stack-check
      -I"$E/osfmk" -I"$E/bsd" -I"$E/libkern" -I"$E/pexpert" -I"$E/iokit" -I"$E/security" -I"$X/EXTERNAL_HEADERS")
 B="$W/libs"; rm -rf "$B"; mkdir -p "$B/inc"
 "${KCC[@]}" -DXNU_KERNEL_PRIVATE=1 -DDISPATCH_USE_DTRACE=0 -DOS_ATOMIC_CONFIG_MEMORY_ORDER_DEPENDENCY=1 \
@@ -144,6 +149,12 @@ for f in kern_init kern_support kern_synch; do
         -I"$S/libpthread/private" -o "$B/pthread_$f.o" "$S/libpthread/kern/$f.c"
 done
 xcrun --sdk iphoneos libtool -static -o "$L/lib/kernel/libpthread_kext.a" "$B"/pthread_kern_*.o
+# the gate for the above: the oid's parent pointer must be an authenticated relocation, as in the kernel's own objects
+# (otool -rv names the type: a plain pointer reads UNSIGND / ARM64_RELOC_UNSIGNED, a signed one does not)
+rl=$(xcrun --sdk iphoneos otool -rv "$B/pthread_kern_support.o" | grep '_sysctl__kern_children' || true)
+[ -n "$rl" ] && ! grep -q 'UNSIGN' <<<"$rl" || { printf '%s\n' "$rl";
+  echo "::error::libpthread_kext.a: sysctl oid_parent is a plain pointer (needs XNU_PTRAUTH_SIGNED_DATA_PTRS=1)"; exit 1; }
+log "   libpthread_kext.a: oid_parent relocation(s): $(tr -s ' ' <<<"$rl" | tr '\n' ';')"
 # -lcc_kext (MakeInc.def LD_KERNEL_LIBS) is in Apple's internal SDK only. This link is a record, not the product: Xcode's
 # kext compiler runtime stands in when the toolchain has one, otherwise an empty archive, and any builtin left undefined
 # is resolved by the project machine's -lcc_kext at the real link. Neither archive is uploaded (collect.py).
